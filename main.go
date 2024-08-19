@@ -8,31 +8,38 @@ import (
 	"github.com/nsf/termbox-go"
 )
 
-const OFFSET_SKY = 0   // 空の開始位置
-const OFFSET_KAPPA = 4 // 河童の開始位置
-const OFFSET_SEA = 7   // 海の開始位置
+const OFFSET_SKY = 0                               // 空の開始位置
+const HEIGHT_SKY = 3                               // 空の高さ
+const OFFSET_KAPPA = HEIGHT_SKY + 2                // 河童の開始位置（空の高さに余白を入れた次）
+const HEIGHT_KAPPA = 4                             // 河童の高さ
+const OFFSET_SEA = OFFSET_KAPPA + HEIGHT_KAPPA - 2 // 海の開始位置（ちょっとだけ河童が海にめり込む）
+const HEIGHT_SEA = 4                               // 海の高さ
+const COUNT_CLOUD = 5                              // 雲の個数
+const COUNT_WAVE = 8                               // 波の個数
 
 // アニメーション構造
 var (
 	dish         = " ,< = > "
 	face         = "(  ' e')"
 	body         = " |   #|"
+	foot         = "~~~~~~~~"
 	waterSurface = "~"
 	cloud        = "---"
-	wave         = "^^^"
+	wave         = "^^^^^"
 )
 
-type Kappa struct {
-	l1, l2, l3 string
+// 河童はレイヤーが徐々に切り替わるので先にアニメーション定義しておく
+type KappaAnim struct {
+	l1, l2, l3, l4 string
 }
 
 // 河童のアニメーションリスト
-var kappaAnim = []Kappa{
-	{"", "", ""},                    // 0
-	{"", "", dish},                  // 1
-	{"", dish, face},                // 2
-	{dish, face, body},              // 3
-	{dish, face + " < Hello", body}, // 4
+var kappaAnim = []KappaAnim{
+	{"", "", "", ""},                      // 0
+	{"", "", dish, foot},                  // 1
+	{"", dish, face, foot},                // 2
+	{dish, face, body, foot},              // 3
+	{dish, face + " < Hello", body, foot}, // 4
 }
 
 // こんな感じの動き
@@ -53,13 +60,13 @@ func main() {
 	width, _ := termbox.Size()
 	offset := 0
 	kappaMoveIndex := 0
-	offsetSky := make([][]int, 3)
+	offsetSky := make([][]int, HEIGHT_SKY)
 	for i := 0; i < len(offsetSky); i++ {
-		offsetSky[i] = make([]int, 5)
+		offsetSky[i] = make([]int, COUNT_CLOUD)
 	}
-	offsetSea := make([][]int, 5)
+	offsetSea := make([][]int, HEIGHT_SEA)
 	for i := 0; i < len(offsetSea); i++ {
-		offsetSea[i] = make([]int, 5)
+		offsetSea[i] = make([]int, COUNT_WAVE)
 	}
 
 	ticker := time.NewTicker(100 * time.Millisecond)
@@ -82,15 +89,15 @@ func main() {
 			}
 		case <-ticker.C:
 			termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-			if offset%16 == 0 {
+			if offset%17 == 0 {
 				makeRandomOffset(&offsetSky)
 			}
-			if offset%9 == 0 {
+			if offset%8 == 0 {
 				makeRandomOffset(&offsetSea)
 			}
-			drawKappa(kappaMoveIndex, offset)
 			drawSky(offsetSky)
 			drawSea(offsetSea)
+			drawKappa(kappaMoveIndex, offset)
 			termbox.Flush()
 
 			// 画面端にいったら初期位置にワープ
@@ -124,7 +131,7 @@ func drawKappa(index, offset int) {
 	draw(offset, OFFSET_KAPPA, kappaAnim[kappaMove[index]].l1)
 	draw(offset, OFFSET_KAPPA+1, kappaAnim[kappaMove[index]].l2)
 	draw(offset, OFFSET_KAPPA+2, kappaAnim[kappaMove[index]].l3)
-
+	draw(offset, OFFSET_KAPPA+3, kappaAnim[kappaMove[index]].l4)
 }
 
 func drawSea(offsetSea [][]int) {
@@ -134,8 +141,8 @@ func drawSea(offsetSea [][]int) {
 	draw(0, OFFSET_SEA, surface)
 	for i := 0; i < len(offsetSea); i++ {
 		for j := 0; j < len(offsetSea[0]); j++ {
-			// 水面の分だけ一個ずらす
-			draw(offsetSea[i][j], OFFSET_SEA+1+i, wave)
+			// 水面と河童の分だけ2個ずらす
+			draw(offsetSea[i][j], OFFSET_SEA+2+i, wave)
 		}
 	}
 }
