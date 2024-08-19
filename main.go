@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"math/rand"
 	"strings"
 	"time"
@@ -9,14 +10,20 @@ import (
 	"github.com/nsf/termbox-go"
 )
 
-const OFFSET_SKY = 0                               // 空の開始位置
-const HEIGHT_SKY = 3                               // 空の高さ
-const OFFSET_KAPPA = HEIGHT_SKY + 2                // 河童の開始位置（空の高さに余白を入れた次）
-const HEIGHT_KAPPA = 4                             // 河童の高さ
-const OFFSET_SEA = OFFSET_KAPPA + HEIGHT_KAPPA - 2 // 海の開始位置（ちょっとだけ河童が海にめり込む）
-const HEIGHT_SEA = 4                               // 海の高さ
-const COUNT_CLOUD = 5                              // 雲の個数
-const COUNT_WAVE = 8                               // 波の個数
+const (
+	offsetSky   = iota                          // 空の開始位置
+	heightSky   = 3                             // 空の高さ
+	offsetKappa = heightSky + 2                 // 河童の開始位置（空の高さに余白を入れた次）
+	heightKappa = 4                             // 河童の高さ
+	offsetSea   = offsetKappa + heightKappa - 2 // 海の開始位置（ちょっとだけ河童が海にめり込む）
+	heightSea   = 4                             // 海の高さ
+	countCloud  = 5                             // 雲の個数
+	countWave   = 8                             // 波の個数
+
+	tickerInterval = 100 * time.Millisecond
+	skyUpdateUnit  = 17
+	seaUpdateUnit  = 8
+)
 
 // アニメーション構造
 var (
@@ -28,9 +35,6 @@ var (
 	cloud        = "---"
 	wave         = "^^^^^"
 )
-
-// 乱数生成器
-var random = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 // 河童はレイヤーが徐々に切り替わるので先にアニメーション定義しておく
 type kappaFrame struct {
@@ -48,7 +52,28 @@ type SkySea struct {
 	offset [][]int
 }
 
-func NewKappaAnim(msg string) KappaAnim {
+type Animation struct {
+	kappa  *KappaAnim
+	sky    *SkySea
+	sea    *SkySea
+	offset int
+	width  int
+	msg    string
+}
+
+func NewAnimation(msg string) *Animation {
+	width, _ := termbox.Size()
+	return &Animation{
+		kappa:  NewKappaAnim(msg),
+		sky:    NewSkySea(heightSky, countCloud),
+		sea:    NewSkySea(heightSea, countWave),
+		offset: 0,
+		width:  width,
+		msg:    msg,
+	}
+}
+
+func NewKappaAnim(msg string) *KappaAnim {
 	// 河童のアニメーションリスト
 	frames := []kappaFrame{
 		{"", "", "", ""},                       // 0
@@ -59,31 +84,24 @@ func NewKappaAnim(msg string) KappaAnim {
 	}
 
 	// こんな感じの動き
-	actions := []int{
-		0, 0, 0, 1, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 3, 3, 2, 1,
-	}
-	return KappaAnim{
-		frames:  frames,
-		actions: actions,
-		index:   0,
-	}
+	actions := []int{0, 0, 0, 1, 2, 3, 3, 3, 3, 3, 4, 4, 4, 4, 3, 3, 2, 1}
+	return &KappaAnim{frames: frames, actions: actions, index: 0}
 }
 
 // 空と海は構造が同じなので面倒だから一緒くたに定義
-func NewSkySea(h, c int) SkySea {
-	offset := make([][]int, h)
-	for i := 0; i < len(offset); i++ {
-		offset[i] = make([]int, c)
+func NewSkySea(height, count int) *SkySea {
+	offset := make([][]int, height)
+	for i := range offset {
+		offset[i] = make([]int, count)
 	}
-	return SkySea{offset}
+	return &SkySea{offset: offset}
 }
 
 // 雲と波をランダム生成
-func (ss *SkySea) makeRandomOffset() {
-	width, _ := termbox.Size()
-	for i := 0; i < len(ss.offset); i++ {
-		for j := 0; j < len(ss.offset[i]); j++ {
-			ss.offset[i][j] = random.Intn(width)
+func (ss *SkySea) makeRandomOffset(width int) {
+	for i := range ss.offset {
+		for j := range ss.offset[i] {
+			ss.offset[i][j] = rand.Intn(width)
 		}
 	}
 }
@@ -95,56 +113,40 @@ func (k *KappaAnim) getFrame() kappaFrame {
 func (k *KappaAnim) drawKappa(offset int) {
 	k.index = (k.index + 1) % len(k.actions)
 	frame := k.getFrame()
-	draw(offset, OFFSET_KAPPA, frame.l1)
-	draw(offset, OFFSET_KAPPA+1, frame.l2)
-	draw(offset, OFFSET_KAPPA+2, frame.l3)
-	draw(offset, OFFSET_KAPPA+3, frame.l4)
+	drawString(offset, offsetKappa, frame.l1)
+	drawString(offset, offsetKappa+1, frame.l2)
+	drawString(offset, offsetKappa+2, frame.l3)
+	drawString(offset, offsetKappa+3, frame.l4)
 }
 
 func (ss *SkySea) drawSky() {
-	for i := 0; i < len(ss.offset); i++ {
-		for j := 0; j < len(ss.offset[0]); j++ {
-			draw(ss.offset[i][j], OFFSET_SKY+i, cloud)
+	for i, row := range ss.offset {
+		for _, x := range row {
+			drawString(x, offsetSky+i, cloud)
 		}
 	}
 }
-func (ss *SkySea) drawSea() {
-	width, _ := termbox.Size()
+
+func (ss *SkySea) drawSea(width int) {
 	// 画面幅いっぱいに波線を描画
 	surface := strings.Repeat(waterSurface, width)
-	draw(0, OFFSET_SEA, surface)
-	for i := 0; i < len(ss.offset); i++ {
-		for j := 0; j < len(ss.offset[0]); j++ {
-			// 水面と河童の分だけ2個ずらす
-			draw(ss.offset[i][j], OFFSET_SEA+2+i, wave)
+	drawString(0, offsetSea, surface)
+	for i, row := range ss.offset {
+		for _, x := range row {
+			drawString(x, offsetSea+2+i, wave)
 		}
 	}
 }
 
 // 規定のx, yに文字を表示
-func draw(x, y int, s string) {
+func drawString(x, y int, s string) {
 	for i, r := range s {
 		termbox.SetCell(x+i, y, r, termbox.ColorWhite, termbox.ColorDefault)
 	}
 }
 
-func main() {
-	msg := flag.String("m", "Hello!", "Define the message that Kappa speaks.")
-	flag.Parse()
-
-	err := termbox.Init()
-	if err != nil {
-		panic(err)
-	}
-	defer termbox.Close()
-
-	width, _ := termbox.Size()
-	offset := 0
-	kappa := NewKappaAnim(*msg)
-	sky := NewSkySea(HEIGHT_SKY, COUNT_CLOUD)
-	sea := NewSkySea(HEIGHT_SEA, COUNT_WAVE)
-
-	ticker := time.NewTicker(100 * time.Millisecond)
+func (a *Animation) Run() error {
+	ticker := time.NewTicker(tickerInterval)
 	defer ticker.Stop()
 
 	eventQueue := make(chan termbox.Event)
@@ -156,32 +158,48 @@ func main() {
 
 	for {
 		select {
-		// qかspaceが入力されたらやめる
 		case ev := <-eventQueue:
-			if ev.Type == termbox.EventKey {
-				if ev.Key == termbox.KeyEnter || ev.Ch == 'q' {
-					return
-				}
+			if ev.Type == termbox.EventKey && (ev.Key == termbox.KeyEnter || ev.Ch == 'q') {
+				return nil
 			}
 		case <-ticker.C:
-			termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
-			if offset%17 == 0 {
-				sky.makeRandomOffset()
+			if err := a.draw(); err != nil {
+				return err
 			}
-			if offset%8 == 0 {
-				sea.makeRandomOffset()
-			}
-			sky.drawSky()
-			sea.drawSea()
-			kappa.drawKappa(offset)
-			termbox.Flush()
-
-			// 画面端にいったら初期位置にワープ
-			// slコマンドと同じにするならここでexit
-			offset++
-			if offset >= width {
-				offset = 0
-			}
+			a.offset = (a.offset + 1) % a.width
 		}
+	}
+}
+
+func (a *Animation) draw() error {
+	if err := termbox.Clear(termbox.ColorDefault, termbox.ColorDefault); err != nil {
+		return fmt.Errorf("failed to clear screen: %w", err)
+	}
+	if a.offset%skyUpdateUnit == 0 {
+		a.sky.makeRandomOffset(a.width)
+	}
+	if a.offset%seaUpdateUnit == 0 {
+		a.sea.makeRandomOffset(a.width)
+	}
+
+	a.sky.drawSky()
+	a.sea.drawSea(a.width)
+	a.kappa.drawKappa(a.offset)
+	return termbox.Flush()
+}
+
+func main() {
+	msg := flag.String("m", "Hello!", "Define the message that Kappa speaks.")
+	flag.Parse()
+
+	if err := termbox.Init(); err != nil {
+		fmt.Printf("Failed to initialize termbox: %v\n", err)
+		return
+	}
+	defer termbox.Close()
+	animation := NewAnimation(*msg)
+	rand.New(rand.NewSource(time.Now().UnixNano()))
+	if err := animation.Run(); err != nil {
+		fmt.Printf("Animation error: %v\n", err)
 	}
 }
