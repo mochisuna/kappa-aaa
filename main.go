@@ -11,14 +11,15 @@ import (
 )
 
 const (
-	offsetSky   = iota                          // 空の開始位置
-	heightSky   = 3                             // 空の高さ
-	offsetKappa = heightSky + 2                 // 河童の開始位置（空の高さに余白を入れた次）
-	heightKappa = 4                             // 河童の高さ
-	offsetSea   = offsetKappa + heightKappa - 2 // 海の開始位置（ちょっとだけ河童が海にめり込む）
-	heightSea   = 4                             // 海の高さ
-	countCloud  = 5                             // 雲の個数
-	countWave   = 8                             // 波の個数
+	offsetSky     = iota                      // 空の開始位置
+	heightSky     = 3                         // 空の高さ
+	offsetKappa   = heightSky + 2             // 河童の開始位置（空の高さに余白を入れた次）
+	heightKappa   = 4                         // 河童の高さ
+	offsetSea     = offsetKappa + heightKappa // 海の開始位置
+	heightSea     = 4                         // 海の高さ
+	countCloud    = 5                         // 雲の個数
+	countWave     = 8                         // 波の個数
+	offsetMessage = offsetSea + heightSea + 2 // メッセージの開始位置
 
 	tickerInterval = 100 * time.Millisecond
 	skyUpdateUnit  = 17
@@ -130,10 +131,11 @@ func (ss *SkySea) drawSky() {
 func (ss *SkySea) drawSea(width int) {
 	// 画面幅いっぱいに波線を描画
 	surface := strings.Repeat(waterSurface, width)
-	drawString(0, offsetSea, surface)
+	drawString(0, offsetSea-2, surface)
 	for i, row := range ss.offset {
 		for _, x := range row {
-			drawString(x, offsetSea+2+i, wave)
+			// 水面から１マス下に河童の胴体がくるので、さらにもう１マス下から開始する
+			drawString(x, offsetSea+i, wave)
 		}
 	}
 }
@@ -144,7 +146,6 @@ func drawString(x, y int, s string) {
 		termbox.SetCell(x+i, y, r, termbox.ColorWhite, termbox.ColorDefault)
 	}
 }
-
 func (a *Animation) Run() error {
 	ticker := time.NewTicker(tickerInterval)
 	defer ticker.Stop()
@@ -159,7 +160,9 @@ func (a *Animation) Run() error {
 	for {
 		select {
 		case ev := <-eventQueue:
-			if ev.Type == termbox.EventKey && (ev.Key == termbox.KeyEnter || ev.Ch == 'q') {
+			// Enterキーとqキーで停止
+			// ctrl+Cも明示的に停止を許容
+			if ev.Type == termbox.EventKey && (ev.Key == termbox.KeyEnter || ev.Ch == 'q' || ev.Key == termbox.KeyCtrlC) {
 				return nil
 			}
 		case <-ticker.C:
@@ -185,6 +188,8 @@ func (a *Animation) draw() error {
 	a.sky.drawSky()
 	a.sea.drawSea(a.width)
 	a.kappa.drawKappa(a.offset)
+
+	drawString(0, offsetMessage, "Press the 'q' key or Enter to stop.")
 	return termbox.Flush()
 }
 
