@@ -30,7 +30,7 @@ const (
 var (
 	dish         = " ,< = > "
 	face         = "(  ' e')"
-	body         = " |   #|"
+	body         = "(|   #|"
 	foot         = "~~~~~~~~"
 	waterSurface = "~"
 	cloud        = "---"
